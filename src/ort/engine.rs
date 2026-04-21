@@ -11,7 +11,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use tracing::{info, warn};
+use tracing::{debug, info};
 
 use crate::{
     human_bytes_binary, onnx, DType, Device, EngineInputs, FromConfig, Iiix, MinOptMax, ORTConfig,
@@ -1254,7 +1254,7 @@ impl Engine {
                         batch_size.clone()
                     } else {
                         let z =  MinOptMax::from(1);
-                        warn!(
+                        debug!(
                             "Using dynamic shapes in inputs without specifying it: the {}-th input, the {}-th dimension. \
                             Using {:?} by default. You should make it clear when using TensorRT.",
                             i + 1, ii + 1, z
