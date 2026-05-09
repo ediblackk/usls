@@ -189,7 +189,7 @@ impl Annotator {
         Ok(())
     }
 
-    fn create_context(&self) -> DrawContext {
+    fn create_context(&self) -> DrawContext<'_> {
         DrawContext {
             text_renderer: &self.text_renderer,
             prob_style: self.prob_style.as_ref(),

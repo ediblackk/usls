@@ -485,9 +485,13 @@ impl Hub {
             pb = pb.with_message(msg);
         }
 
-        // Create temporary file in system temp directory (more secure and reliable)
-        let mut temp_file = NamedTempFile::new()
-            .context("Failed to create temporary download file in system temp directory")?;
+        // Create temporary file in the same directory as the final destination
+        // to avoid cross-device link errors (EXDEV) when /tmp and ~/.cache are on different filesystems
+        let parent_dir = dst_path.parent().context("Failed to determine parent directory for download")?;
+        std::fs::create_dir_all(parent_dir)
+            .with_context(|| format!("Failed to create parent directory: {parent_dir:?}"))?;
+        let mut temp_file = NamedTempFile::new_in(parent_dir)
+            .context("Failed to create temporary download file")?;
 
         let mut reader = resp.into_body().into_reader();
         const BUFFER_SIZE: usize = 64 * 1024;
