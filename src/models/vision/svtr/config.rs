@@ -20,6 +20,8 @@
 /// > - **svtr-v2-student-ch**: SVTR v2 student model for distillation
 /// > - **ppocr-rec-v5-mobile**: PaddleOCR v5 mobile recognition
 /// > - **ppocr-rec-v5-server**: PaddleOCR v5 server recognition
+/// > - **ppocr-rec-v6-small**: PaddleOCR v6 small recognition (MultiHead CTC + NRTR)
+/// > - **ppocr-rec-v6-medium**: PaddleOCR v6 medium recognition (MultiHead CTC + NRTR)
 /// >
 /// > # Implemented Features / Tasks
 /// >
@@ -113,5 +115,22 @@ impl crate::Config {
     /// PaddleOCR v5 server recognition
     pub fn ppocr_rec_v5_server() -> Self {
         Self::ppocr_rec_v5().with_model_file("ppocr-v5-server.onnx")
+    }
+
+    fn ppocr_rec_v6() -> Self {
+        Self::svtr()
+            .with_normalize(true)
+            .with_image_mean([0.5, 0.5, 0.5])
+            .with_image_std([0.5, 0.5, 0.5])
+    }
+
+    /// PaddleOCR v6 small recognition (MultiHead CTC export, 18710-class vocab)
+    pub fn ppocr_rec_v6_small() -> Self {
+        Self::ppocr_rec_v6().with_model_file("ppocr-rec-v6-small.onnx")
+    }
+
+    /// PaddleOCR v6 medium recognition (MultiHead CTC export, 18710-class vocab)
+    pub fn ppocr_rec_v6_medium() -> Self {
+        Self::ppocr_rec_v6().with_model_file("ppocr-rec-v6-medium.onnx")
     }
 }
