@@ -52,7 +52,7 @@ pub fn __perf_record(key: &str, duration: Duration) {
 }
 
 /// Return a snapshot of all collected entries sorted by first-seen order.
-pub(crate) fn perf_collect() -> Vec<(String, Vec<Duration>)> {
+pub fn perf_collect() -> Vec<(String, Vec<Duration>)> {
     if let Ok(g) = GLOBAL_PERF.lock() {
         let mut entries = g.entries.clone();
         entries.sort_by_key(|(key, _)| g.index.get(key).map_or(u64::MAX, |&(_, seq)| seq));

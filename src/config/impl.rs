@@ -117,6 +117,32 @@ pub struct Config {
 }
 
 impl Config {
+    /// TEMP SHIM (2026-08-19, see mylm/USLS_VENDOR_SHIMS.md): the local
+    /// patches adding SVTR class-mask filtering were lost when this fork
+    /// was re-cloned; accept the call and warn once so mylm-perception
+    /// builds. The mask is NOT applied until the real patch is restored.
+    pub fn with_class_mask(self, _mask: Option<Vec<bool>>) -> Self {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            eprintln!(
+                "[usls-shim] with_class_mask is a no-op — lost local patch, see mylm/USLS_VENDOR_SHIMS.md"
+            )
+        });
+        self
+    }
+
+    /// TEMP SHIM (2026-08-19, see mylm/USLS_VENDOR_SHIMS.md): DB min-area
+    /// box filtering was lost with the re-clone; no-op with a single warn.
+    pub fn with_db_min_area(self, _min_area: f32) -> Self {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            eprintln!(
+                "[usls-shim] with_db_min_area is a no-op — lost local patch, see mylm/USLS_VENDOR_SHIMS.md"
+            )
+        });
+        self
+    }
+
     /// Finalize and validate all module configurations.
     ///
     /// Resolves model file paths, downloads missing models, and validates the setup.
