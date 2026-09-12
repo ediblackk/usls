@@ -116,30 +116,58 @@ pub struct Config {
     pub(crate) inference: InferenceParams,
 }
 
+/// Emit `msg` at most once per flag, without ever poisoning or panicking.
+///
+/// Deliberately NOT `std::sync::Once` + `eprintln!`: `eprintln!` panics when
+/// stderr is a pipe whose reader is gone (Windows os error 232), and a panic
+/// inside `Once::call_once` poisons the `Once`, so every later caller panics
+/// too — on 2026-09-12 that killed OCR for a whole Javi process. An
+/// `AtomicBool` cannot be poisoned, the write cannot panic, and a failed
+/// emission is returned as `Err` for the caller to ignore or report.
+pub(crate) fn emit_once<F>(flag: &std::sync::atomic::AtomicBool, emit: F) -> Result<(), String>
+where
+    F: FnOnce() -> std::io::Result<()> + std::panic::UnwindSafe,
+{
+    if flag.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Ok(());
+    }
+    match std::panic::catch_unwind(emit) {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(format!("warn-once write failed: {e}")),
+        Err(_) => Err("warn-once writer panicked".to_string()),
+    }
+}
+
+/// Write one shim warning to stderr; a closed pipe is an `io::Error`, not a panic.
+fn warn_once(flag: &std::sync::atomic::AtomicBool, msg: &'static str) -> Result<(), String> {
+    emit_once(flag, move || {
+        use std::io::Write;
+        writeln!(std::io::stderr(), "{msg}")
+    })
+}
+
 impl Config {
     /// TEMP SHIM (2026-08-19, see mylm/USLS_VENDOR_SHIMS.md): the local
     /// patches adding SVTR class-mask filtering were lost when this fork
     /// was re-cloned; accept the call and warn once so mylm-perception
     /// builds. The mask is NOT applied until the real patch is restored.
     pub fn with_class_mask(self, _mask: Option<Vec<bool>>) -> Self {
-        static ONCE: std::sync::Once = std::sync::Once::new();
-        ONCE.call_once(|| {
-            eprintln!(
-                "[usls-shim] with_class_mask is a no-op — lost local patch, see mylm/USLS_VENDOR_SHIMS.md"
-            )
-        });
+        static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        let _ = warn_once(
+            &WARNED,
+            "[usls-shim] with_class_mask is a no-op — lost local patch, see mylm/USLS_VENDOR_SHIMS.md",
+        );
         self
     }
 
     /// TEMP SHIM (2026-08-19, see mylm/USLS_VENDOR_SHIMS.md): DB min-area
     /// box filtering was lost with the re-clone; no-op with a single warn.
     pub fn with_db_min_area(self, _min_area: f32) -> Self {
-        static ONCE: std::sync::Once = std::sync::Once::new();
-        ONCE.call_once(|| {
-            eprintln!(
-                "[usls-shim] with_db_min_area is a no-op — lost local patch, see mylm/USLS_VENDOR_SHIMS.md"
-            )
-        });
+        static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        let _ = warn_once(
+            &WARNED,
+            "[usls-shim] with_db_min_area is a no-op — lost local patch, see mylm/USLS_VENDOR_SHIMS.md",
+        );
         self
     }
 
@@ -277,5 +305,54 @@ impl Config {
             .and_then(|path| std::fs::read_to_string(path).ok())
             .map(|content| content.lines().map(|line| line.to_string()).collect())
             .unwrap_or_else(Vec::new)
+    }
+}
+
+#[cfg(test)]
+mod shim_warn_once_tests {
+    use super::{emit_once, Config};
+    use std::sync::atomic::AtomicBool;
+
+    /// A panicking emitter must come back as `Err`, never as an unwind.
+    #[test]
+    fn panicking_emitter_is_reported_as_err() {
+        static FLAG: AtomicBool = AtomicBool::new(false);
+        let out = emit_once(&FLAG, || panic!("failed printing to stderr"));
+        assert!(out.is_err(), "a panicking emitter must yield Err");
+    }
+
+    /// The old `Once` poisoned itself when its initialiser panicked and then
+    /// panicked in every later caller. The flag must survive instead.
+    #[test]
+    fn second_call_after_a_panicking_first_never_panics() {
+        static FLAG: AtomicBool = AtomicBool::new(false);
+        let first = emit_once(&FLAG, || panic!("the pipe is being closed"));
+        assert!(first.is_err(), "first call reports the failure");
+
+        // Would have been "Once instance has previously been poisoned".
+        let second = emit_once(&FLAG, || Ok(()));
+        assert!(second.is_ok(), "second call must not be poisoned: {second:?}");
+    }
+
+    /// A write error (closed stderr pipe) is an `Err`, not a panic.
+    #[test]
+    fn write_error_is_reported_as_err() {
+        static FLAG: AtomicBool = AtomicBool::new(false);
+        let out = emit_once(&FLAG, || {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "The pipe is being closed. (os error 232)",
+            ))
+        });
+        assert!(out.is_err(), "a failed write must yield Err");
+    }
+
+    /// The shims themselves stay callable for the life of the process.
+    #[test]
+    fn shims_can_be_called_repeatedly() {
+        let _ = Config::default().with_class_mask(None);
+        let _ = Config::default().with_class_mask(Some(vec![true, false]));
+        let _ = Config::default().with_db_min_area(1.0);
+        let _ = Config::default().with_db_min_area(2.0);
     }
 }
