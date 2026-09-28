@@ -485,9 +485,13 @@ impl Hub {
             pb = pb.with_message(msg);
         }
 
-        // Create temporary file in system temp directory (more secure and reliable)
-        let mut temp_file = NamedTempFile::new()
-            .context("Failed to create temporary download file in system temp directory")?;
+        // Create the temporary file in the DESTINATION directory: `persist` is a
+        // rename, and a rename cannot cross filesystems. The system temp dir is
+        // frequently a different device (tmpfs) than the cache dir, which turned
+        // every download into "Invalid cross-device link (os error 18)".
+        let temp_dir = dst_path.parent().unwrap_or_else(|| Path::new("."));
+        let mut temp_file = NamedTempFile::new_in(temp_dir)
+            .context("Failed to create temporary download file")?;
 
         let mut reader = resp.into_body().into_reader();
         const BUFFER_SIZE: usize = 64 * 1024;
